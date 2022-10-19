@@ -1,22 +1,72 @@
 import * as FileSystem from 'expo-file-system'
 import * as SQLite from 'expo-sqlite'
 
-import { StyleSheet, Text, View } from 'react-native'
-import { useEffect, useState } from 'react'
+import {
+  StyleSheet,
+  Text,
+  View
+} from 'react-native'
+import {
+  useEffect,
+  useState
+} from 'react'
 
-import { Asset } from 'expo-asset'
-import { StatusBar } from 'expo-status-bar'
+import {
+  Asset
+} from 'expo-asset'
+import {
+  StatusBar
+} from 'expo-status-bar'
 
 async function openDatabase() {
-  if (!(await FileSystem.getInfoAsync(FileSystem.documentDirectory + 'SQLite')).exists) {
-    await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'SQLite')
-  }
-  await FileSystem.downloadAsync(
-    Asset.fromModule(require('./assets/data/data.db')).uri,
-    FileSystem.documentDirectory + 'SQLite/data.db'
-  )
 
-  return SQLite.openDatabase('data.db');
+  const localFolder = FileSystem.documentDirectory + 'SQLite'
+  const dbName = 'data.db'
+  const localURI = localFolder + '/' + dbName
+
+  if (!(await FileSystem.getInfoAsync(localFolder)).exists) {
+    await FileSystem.makeDirectoryAsync(localFolder)
+  }
+
+  let asset = Asset.fromModule(require('./assets/data/data.db'))
+
+  if (!asset.downloaded) {
+    await asset.downloadAsync().then(value => {
+      asset = value
+      console.log('asset downloadAsync - finished')
+    })
+
+    let remoteURI = asset.localUri
+
+    await FileSystem.copyAsync({
+        from: remoteURI,
+        to: localURI
+    }).catch(error => {
+        console.log('asset copyDatabase - finished with error: ' + error)
+    })
+  } else {
+    // for iOS - Asset is downloaded on call Asset.fromModule(), just copy from cache to local file
+    if (asset.localUri || asset.uri.startsWith("asset") || asset.uri.startsWith("file")) {
+
+      let remoteURI = asset.localUri || asset.uri
+
+      await FileSystem.copyAsync({
+        from: remoteURI,
+        to: localURI
+      }).catch(error => {
+        console.log("local copyDatabase - finished with error: " + error)
+      })
+    } else if (asset.uri.startsWith("http") || asset.uri.startsWith("https")) {
+      let remoteURI = asset.uri
+
+      await FileSystem.downloadAsync(remoteURI, localURI)
+        .catch(error => {
+          console.log("local downloadAsync - finished with error: " + error)
+        })
+    }
+  }
+
+  return SQLite.openDatabase(dbName)
 }
 
 export default function App() {
@@ -36,7 +86,9 @@ export default function App() {
       db.transaction(tx => {
         console.log('transaction')
 
-        tx.executeSql('select * from classes order by nm_nome', [], (_, { rows }) => {
+        tx.executeSql('select * from classes order by nm_nome', [], (_, {
+          rows
+        }) => {
           let items = []
 
           // simulate an slow load
@@ -64,11 +116,11 @@ export default function App() {
         setHasError(true)
         setErrorMsg(txError)
       })
-    }).catch( (openDbError) => {
-        console.log("Database Error")
-        setLoading(false)
-        setHasError(true)
-        setErrorMsg(openDbError)
+    }).catch((openDbError) => {
+      console.log("Database Error")
+      setLoading(false)
+      setHasError(true)
+      setErrorMsg(openDbError)
     })
   }, [])
 
